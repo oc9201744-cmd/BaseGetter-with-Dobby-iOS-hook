@@ -1,0 +1,48 @@
+name: "XO VIP Build v4"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: # Manuel olarak başlatabilmen için
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4 # v4 kullanıyoruz
+      with:
+        submodules: recursive
+
+    - name: Set up Xcode Version
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: 'latest-stable'
+
+    - name: Build Dylib
+      run: |
+        # Xcode projesini derle
+        xcodebuild -project DobbyHookGL.xcodeproj \
+                   -scheme DobbyHookGL \
+                   -configuration Release \
+                   -sdk iphoneos \
+                   clean build \
+                   CODE_SIGNING_ALLOWED=NO \
+                   CODE_SIGNING_REQUIRED=NO \
+                   ONLY_ACTIVE_ARCH=NO
+
+    - name: List Output (Debug)
+      run: ls -R build/
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4 # Artifact v4 güncel versiyon
+      with:
+        name: XO-VIP-ESP-v4.2
+        path: |
+          build/Release-iphoneos/*.dylib
+          build/Release-iphoneos/*.framework
+        if-no-files-found: error
+        retention-days: 5 # Dosyayı 5 gün saklar
