@@ -1,4 +1,4 @@
-name: "XO-VIP-BUILD-AUTO"
+name: "XO-VIP-FINAL-BUILD"
 
 on:
   push:
@@ -20,32 +20,34 @@ jobs:
       with:
         xcode-version: 'latest-stable'
 
-    - name: Get Project Info (Debug)
-      run: xcodebuild -list -project *.xcodeproj
-
-    - name: Build Dylib (Dynamic Target)
+    - name: Build Dylib
       run: |
-        # Klasördeki .xcodeproj dosyasının adını al
-        PROJECT_NAME=$(ls -d *.xcodeproj | head -n 1)
-        # Proje içindeki ilk Target ismini al
-        TARGET_NAME=$(xcodebuild -list -project "$PROJECT_NAME" | awk '/Targets:/ {found=1; next} found && /^[[:space:]]+[^[:space:]]/ {print $1; exit}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        # 1. Proje dosyasını bul
+        PROJECT_FILE=$(ls -d *.xcodeproj | head -n 1)
         
-        echo "Derlenen Proje: $PROJECT_NAME"
-        echo "Hedef Target: $TARGET_NAME"
+        # 2. Target adını otomatik tespit et (DobbyGL veya DobbyHookGL)
+        TARGET_NAME=$(xcodebuild -list -project "$PROJECT_FILE" | awk '/Targets:/ {found=1; next} found && /^[[:space:]]+[^[:space:]]/ {print $1; exit}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        
+        echo "Bulunan Proje: $PROJECT_FILE"
+        echo "Bulunan Target: $TARGET_NAME"
 
-        xcodebuild -project "$PROJECT_NAME" \
+        # 3. Derleme başlat (Hataları önleyen ek parametrelerle)
+        xcodebuild -project "$PROJECT_FILE" \
                    -target "$TARGET_NAME" \
                    -configuration Release \
                    -sdk iphoneos \
                    clean build \
                    CODE_SIGNING_ALLOWED=NO \
                    CODE_SIGNING_REQUIRED=NO \
-                   AD_HOC_CODE_SIGNING_ALLOWED=YES
+                   AD_HOC_CODE_SIGNING_ALLOWED=YES \
+                   COMPILER_INDEX_STORE_ENABLE=NO \
+                   GENERATE_INFOPLIST_FILE=YES
 
-    - name: Upload Artifact
+    - name: Upload Artifact v4
       uses: actions/upload-artifact@v4
       with:
-        name: XO-ESP-Build
+        name: XO-VIP-Dylib
         path: |
           build/Release-iphoneos/*.dylib
           build/Release-iphoneos/*.framework
+        if-no-files-found: warn
