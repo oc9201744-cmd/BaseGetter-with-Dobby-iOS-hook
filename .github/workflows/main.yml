@@ -1,4 +1,4 @@
-name: "XO-VIP-BUILD-V4"
+name: "XO-VIP-BUILD-AUTO"
 
 on:
   push:
@@ -20,11 +20,21 @@ jobs:
       with:
         xcode-version: 'latest-stable'
 
-    - name: Build Dylib (No Scheme Fix)
+    - name: Get Project Info (Debug)
+      run: xcodebuild -list -project *.xcodeproj
+
+    - name: Build Dylib (Dynamic Target)
       run: |
-        # Scheme hatası almamak için doğrudan Target üzerinden derliyoruz
-        xcodebuild -project DobbyHookGL.xcodeproj \
-                   -target DobbyHookGL \
+        # Klasördeki .xcodeproj dosyasının adını al
+        PROJECT_NAME=$(ls -d *.xcodeproj | head -n 1)
+        # Proje içindeki ilk Target ismini al
+        TARGET_NAME=$(xcodebuild -list -project "$PROJECT_NAME" | awk '/Targets:/ {found=1; next} found && /^[[:space:]]+[^[:space:]]/ {print $1; exit}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        
+        echo "Derlenen Proje: $PROJECT_NAME"
+        echo "Hedef Target: $TARGET_NAME"
+
+        xcodebuild -project "$PROJECT_NAME" \
+                   -target "$TARGET_NAME" \
                    -configuration Release \
                    -sdk iphoneos \
                    clean build \
@@ -35,5 +45,7 @@ jobs:
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: XO-PUBG-ESP-v4.2
-        path: build/Release-iphoneos/*.dylib
+        name: XO-ESP-Build
+        path: |
+          build/Release-iphoneos/*.dylib
+          build/Release-iphoneos/*.framework
