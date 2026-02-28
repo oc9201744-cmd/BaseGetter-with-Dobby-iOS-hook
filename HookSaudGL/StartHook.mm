@@ -1,65 +1,43 @@
-#import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
-#import "dobby.h"
 #import "BaseGetter.h"
+#import "dobby.h"
+#import <stdint.h>
 
-// --- 1. Orijinal Fonksiyon Saklayıcı ---
-// Derleme hatası almamak için static olarak tanımlıyoruz
-static float (*orig_RecoilFunc)(void* _this, float val);
+// Dosyadan alınan güncel offsetler
+const uintptr_t ShootWeaponEntityComp = 0x12C0; // PB42_offsets.mm içinden
+const uintptr_t STExtraBaseCharacter = 0x28E0;   // PB42_offsets.mm içinden
 
-// --- 2. Senin Verdiğin Özel Ofset ---
-#define TARGET_OFFSET 0x10035fd6
+// Geri tepme (Recoil) ile ilgili alt offsetler (Genel PB yapısı)
+const uintptr_t AccessoriesVRecoilFactor = 0x858;
+const uintptr_t AccessoriesHRecoilFactor = 0x85C;
+const uintptr_t AccessoriesRecoveryFactor = 0x860;
 
-// --- 3. Hook Fonksiyonu (Mermiyi Düz Yapar) ---
-float hooked_RecoilFunc(void* _this, float val) {
-    // Fonksiyonun hesapladığı değeri çöpe atıp 0 döndürüyoruz
-    // Bu işlem sekmeyi ve yayılmayı (spread) teorik olarak sıfırlar
-    return 0.0f;
+// Orijinal fonksiyonu saklamak için
+void (*orig_STExtraBaseCharacter_Update)(void *instance, float deltaTime);
+
+// Hook fonksiyonu
+void hook_STExtraBaseCharacter_Update(void *instance, float deltaTime) {
+    if (instance != NULL) {
+        // Character -> ShootWeaponEntityComp yolunu izle
+        uintptr_t weaponEntity = *(uintptr_t *)((uintptr_t)instance + ShootWeaponEntityComp);
+        
+        if (weaponEntity != 0) {
+            // Dikey, Yatay geri tepme ve sarsılmayı sıfırla
+            *(float *)(weaponEntity + AccessoriesVRecoilFactor) = 0.0f;
+            *(float *)(weaponEntity + AccessoriesHRecoilFactor) = 0.0f;
+            *(float *)(weaponEntity + AccessoriesRecoveryFactor) = 0.0f;
+        }
+    }
+    // Orijinal fonksiyonu devam ettir
+    orig_STExtraBaseCharacter_Update(instance, deltaTime);
 }
 
-// --- 4. Ekranda Durum Yazısı ---
-static void ShowHackStatus() {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow *win = nil;
-        if (@available(iOS 13.0, *)) {
-            for (UIWindowScene* scene in [UIApplication sharedApplication].connectedScenes) {
-                if (scene.activationState == UISceneActivationStateForegroundActive) {
-                    win = scene.windows.firstObject;
-                    break;
-                }
-            }
-        } else {
-            win = [UIApplication sharedApplication].keyWindow;
-        }
-
-        if (win) {
-            UILabel *statusLbl = [[UILabel alloc] initWithFrame:CGRectMake(40, 60, 140, 25)];
-            statusLbl.text = @"🚀 C0035FD6 AKTIF";
-            statusLbl.textColor = [UIColor yellowColor];
-            statusLbl.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.7];
-            statusLbl.textAlignment = NSTextAlignmentCenter;
-            statusLbl.font = [UIFont boldSystemFontOfSize:11];
-            statusLbl.layer.cornerRadius = 4;
-            statusLbl.clipsToBounds = YES;
-            [win addSubview:statusLbl];
-        }
-    });
-}
-
-// --- 5. Başlatıcı ---
-__attribute__((constructor))
-static void initialize() {
-    // Anti-cheat taramasını atlatmak ve lobi yüklenmesi için 15 sn bekleme
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-        
-        ShowHackStatus();
-
-        // BaseGetter kullanarak ana adresle ofseti birleştiriyoruz
-        void* targetAddr = (void*)BGGetMainAddress(TARGET_OFFSET);
-        
-        if (targetAddr) {
-            // Dobby ile fonksiyonun üstüne kendi fonksiyonumuzu yazıyoruz
-            DobbyHook(targetAddr, (void*)hooked_RecoilFunc, (void**)&orig_RecoilFunc);
-        }
-    });
+void setupHooks() {
+    // Ana uygulama base adresini al (ShadowTrackerExtra)
+    // STExtraBaseCharacter Update fonksiyonunun offsetini buraya yazmalısın
+    // Örnek olarak 0x10XXXXXXX verilmiştir.
+    void *updateAddr = (void*)BGGetMainAddress(0x104aa76a8); // Örnek offset, dump içindeki ilgili Update fonksiyonu ile değiştirilmeli
+    
+    if (updateAddr) {
+        DobbyHook(updateAddr, (void*)hook_STExtraBaseCharacter_Update, (void**)&orig_STExtraBaseCharacter_Update);
+    }
 }
