@@ -84,7 +84,7 @@ static void TweakInit(void) {
     dispatch_after(
         dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC),
         dispatch_get_main_queue(), ^{
-            void *target = BGGetMainAddress(0x108687C80);
+            void *target = (void*)BGGetMainAddress(0x108687C80);
             DobbyHook(target, (void*)hook_DrawHUD, (void**)&orig_DrawHUD);
         }
     );
