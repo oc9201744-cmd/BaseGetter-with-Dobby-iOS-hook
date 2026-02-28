@@ -1,17 +1,85 @@
+name: "XO-VIP-FINAL-BUILD"
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: 'latest-stable'
+
+    - name: Verify Environment
+      run: |
+        echo "Kütüphane kontrolü yapılıyor..."
+        mkdir -p lib include
+        if [ ! -f "lib/libBaseGetter.a" ]; then
+          echo "HATA: lib/libBaseGetter.a bulunamadı! Lütfen dosyayı repoya ekle."
+        fi
+
     - name: Build Dylib
       run: |
+        # 1. Proje dosyasını ve Target adını bul
         PROJECT_FILE=$(ls -d *.xcodeproj | head -n 1)
         TARGET_NAME=$(xcodebuild -list -project "$PROJECT_FILE" | awk '/Targets:/ {found=1; next} found && /^[[:space:]]+[^[:space:]]/ {print $1; exit}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        
+        echo "Proje: $PROJECT_FILE"
+        echo "Target: $TARGET_NAME"
 
+        # 2. Derleme (Dobby Çıkarıldı, Tüm Frameworkler Eklendi)
         xcodebuild -project "$PROJECT_FILE" \
                    -target "$TARGET_NAME" \
                    -configuration Release \
                    -sdk iphoneos \
                    ARCHS="arm64" \
+                   ONLY_ACTIVE_ARCH=NO \
                    clean build \
                    CODE_SIGNING_ALLOWED=NO \
-                   OTHER_CFLAGS="-fobjc-arc -I./include" \
+                   CODE_SIGNING_REQUIRED=NO \
+                   AD_HOC_CODE_SIGNING_ALLOWED=YES \
+                   COMPILER_INDEX_STORE_ENABLE=NO \
+                   GENERATE_INFOPLIST_FILE=YES \
+                   OTHER_CFLAGS="-fobjc-arc -I./include -Wno-deprecated-declarations" \
                    OTHER_LDFLAGS="-L./lib -lBaseGetter -lc++ -lobjc \
-                   -framework UIKit -framework Foundation -framework Metal \
-                   -framework MetalKit -framework QuartzCore -framework AVFoundation \
-                   -framework GameController -framework CoreLocation -framework Security"
+                   -framework UIKit \
+                   -framework Foundation \
+                   -framework CoreFoundation \
+                   -framework Metal \
+                   -framework MetalKit \
+                   -framework MetalPerformanceShaders \
+                   -framework QuartzCore \
+                   -framework CoreGraphics \
+                   -framework AVFoundation \
+                   -framework GameController \
+                   -framework GameKit \
+                   -framework CloudKit \
+                   -framework DeviceCheck \
+                   -framework CoreLocation \
+                   -framework CoreTelephony \
+                   -framework Speech \
+                   -framework Security"
+
+    - name: Check Output
+      run: |
+        echo "Derleme başarılı, dosyalar listeleniyor:"
+        ls -R build/Release-iphoneos/
+
+    - name: Upload VIP Dylib
+      uses: upload-artifact@v4
+      with:
+        name: XO-VIP-Dylib-Build
+        path: |
+          build/Release-iphoneos/*.dylib
+          build/Release-iphoneos/*.framework
+        if-no-files-found: error
