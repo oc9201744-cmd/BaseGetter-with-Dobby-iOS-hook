@@ -20,28 +20,46 @@ jobs:
       with:
         xcode-version: 'latest-stable'
 
+    - name: Verify Libraries (Dobby & BaseGetter)
+      run: |
+        echo "Kütüphane dosyaları kontrol ediliyor..."
+        mkdir -p lib include
+        ls -la lib/ || echo "Uyarı: lib/ klasörü bulunamadı."
+        ls -la include/ || echo "Uyarı: include/ klasörü bulunamadı."
+
     - name: Build Dylib
       run: |
         # 1. Proje dosyasını bul
         PROJECT_FILE=$(ls -d *.xcodeproj | head -n 1)
         
-        # 2. Target adını otomatik tespit et (DobbyGL veya DobbyHookGL)
+        # 2. Target adını otomatik tespit et
         TARGET_NAME=$(xcodebuild -list -project "$PROJECT_FILE" | awk '/Targets:/ {found=1; next} found && /^[[:space:]]+[^[:space:]]/ {print $1; exit}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         
         echo "Bulunan Proje: $PROJECT_FILE"
         echo "Bulunan Target: $TARGET_NAME"
 
-        # 3. Derleme başlat (Hataları önleyen ek parametrelerle)
+        # 3. Derleme başlat (arm64 zorunlu, hataları önleyen ek parametrelerle)
         xcodebuild -project "$PROJECT_FILE" \
                    -target "$TARGET_NAME" \
                    -configuration Release \
                    -sdk iphoneos \
+                   ARCHS="arm64" \
+                   ONLY_ACTIVE_ARCH=NO \
+                   VALID_ARCHS="arm64" \
                    clean build \
                    CODE_SIGNING_ALLOWED=NO \
                    CODE_SIGNING_REQUIRED=NO \
+                   CODE_SIGNING_IDENTITY="" \
                    AD_HOC_CODE_SIGNING_ALLOWED=YES \
                    COMPILER_INDEX_STORE_ENABLE=NO \
-                   GENERATE_INFOPLIST_FILE=YES
+                   GENERATE_INFOPLIST_FILE=YES \
+                   OTHER_CFLAGS="-fobjc-arc -Wno-deprecated-declarations -I./include" \
+                   OTHER_LDFLAGS="-L./lib -ldobby -lBaseGetter"
+
+    - name: Check Build Output
+      run: |
+        echo "Derlenen dosyalar:"
+        ls -R build/Release-iphoneos/ || echo "Derleme dizini bulunamadı!"
 
     - name: Upload Artifact v4
       uses: actions/upload-artifact@v4
