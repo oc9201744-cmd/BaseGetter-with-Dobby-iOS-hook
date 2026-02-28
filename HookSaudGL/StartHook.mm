@@ -1,18 +1,20 @@
-// Tweak_NoRecoil_PB42.mm
-// PUBG Mobile 4.2 (VNG / GL / Global) – No Recoil & No Spread (NOT BGMI)
+// StartHook.mm
+// DobbyGL + BaseGetter ile no-recoil / no-spread örnek hook'u
 //
-// Offsetler: xxMEKKYxx (UC) & @pubg_dev paylaşımı.
+// NOT: Bu dosya, DobbyHookGL projesinde DobbyGL target'ı için
+//      ana entry ve hook kodlarını içerir.
 //
-// Bu tweak:
-//   - GWorld → GameState → PlayerController → Pawn → Weapon zincirini kullanır
-//   - Weapon üstündeki recoil / deviation parametrelerini düşürür/sıfırlar
-//   - iOS 17 __DATA_CONST için vm_protect ile patch yapar
+// Offsetler PB 4.2 için UC/xxMEKKYxx/@pubg_dev setine göre girildi.
+// BGMI'de ÇALIŞMAZ. (Sadece teknik örnek)
 
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <mach/mach.h>
 #import <mach/vm_prot.h>
 #import <mach-o/dyld.h>
+
+#import "dobby.h"
+#import "BaseGetter.h"
 
 #pragma mark - Offsets (PB 4.2, VNG/GL, NOT BGMI)
 
@@ -91,28 +93,28 @@ static void patchWeaponRecoil(uintptr_t weapon) {
         return;
     }
 
-    float *vRecoilFactor  = (float *)(weapon + AccessoriesVRecoilFactor);
-    float *hRecoilFactor  = (float *)(weapon + AccessoriesHRecoilFactor);
-    float *recovFactor    = (float *)(weapon + AccessoriesRecoveryFactor);
-    float *devFactor      = (float *)(weapon + GameDeviationFactor);
-    float *devAccuracy    = (float *)(weapon + GameDeviationAccuracy);
-    float *sgVert         = (float *)(weapon + ShotGunVerticalSpread);
-    float *sgHoriz        = (float *)(weapon + ShotGunHorizontalSpread);
-    float *vehDevAngle    = (float *)(weapon + VehicleWeaponDeviationAngle);
-    float *recoilKickADS  = (float *)(weapon + RecoilKickADS);
-    float *bulletTrackDist= (float *)(weapon + BulletTrackDistance);
+    float *vRecoilFactor   = (float *)(weapon + AccessoriesVRecoilFactor);
+    float *hRecoilFactor   = (float *)(weapon + AccessoriesHRecoilFactor);
+    float *recovFactor     = (float *)(weapon + AccessoriesRecoveryFactor);
+    float *devFactor       = (float *)(weapon + GameDeviationFactor);
+    float *devAccuracy     = (float *)(weapon + GameDeviationAccuracy);
+    float *sgVert          = (float *)(weapon + ShotGunVerticalSpread);
+    float *sgHoriz         = (float *)(weapon + ShotGunHorizontalSpread);
+    float *vehDevAngle     = (float *)(weapon + VehicleWeaponDeviationAngle);
+    float *recoilKickADS   = (float *)(weapon + RecoilKickADS);
+    float *bulletTrackDist = (float *)(weapon + BulletTrackDistance);
 
     // Tam no recoil / no spread:
-    *vRecoilFactor = 0.0f;
-    *hRecoilFactor = 0.0f;
-    *recovFactor   = 1.0f;   // hızlı toparlama (isteğe göre 1 veya daha büyük)
-    *devFactor     = 0.0f;   // dağılma yok
-    *devAccuracy   = 1.0f;   // maksimum isabet
-    *sgVert        = 0.0f;
-    *sgHoriz       = 0.0f;
-    *vehDevAngle   = 0.0f;
-    *recoilKickADS = 0.0f;
-    *bulletTrackDist = 9999.0f; // istersen mermi izi mesafesini arttır
+    *vRecoilFactor   = 0.0f;
+    *hRecoilFactor   = 0.0f;
+    *recovFactor     = 1.0f;      // hızlı toparlama (istersen >1.0 yap)
+    *devFactor       = 0.0f;      // dağılma yok
+    *devAccuracy     = 1.0f;      // maksimum isabet
+    *sgVert          = 0.0f;
+    *sgHoriz         = 0.0f;
+    *vehDevAngle     = 0.0f;
+    *recoilKickADS   = 0.0f;
+    *bulletTrackDist = 9999.0f;   // istersen mermi izi mesafesini arttır
 
     setRO(recoilBase, span);
 
@@ -210,9 +212,9 @@ static void noRecoilLoop(void) {
 }
 
 __attribute__((constructor))
-static void PB42NoRecoilInit(void) {
+static void StartHookEntry(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        NSLog(@"[PB42][NO_RECOIL] No-recoil tweak init (PB 4.2, VNG/GL)");
+        NSLog(@"[PB42][NO_RECOIL] StartHookEntry init (PB 4.2, VNG/GL)");
 
         gNoRecoilDL = [CADisplayLink displayLinkWithTarget:[NSBlockOperation blockOperationWithBlock:^{
             noRecoilLoop();
@@ -221,4 +223,4 @@ static void PB42NoRecoilInit(void) {
         [gNoRecoilDL addToRunLoop:[NSRunLoop mainRunLoop]
                           forMode:NSRunLoopCommonModes];
     });
-}i
+}
