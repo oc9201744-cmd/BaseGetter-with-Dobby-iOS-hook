@@ -1,4 +1,4 @@
-name: "XO-VIP-BUILD-v2"
+name: "XO-VIP-FINAL-FIX"
 
 on:
   push:
@@ -20,22 +20,12 @@ jobs:
       with:
         xcode-version: 'latest-stable'
 
-    - name: Prepare Workspace
-      run: |
-        mkdir -p lib include
-        echo "Dosya Yapısı Kontrol Ediliyor:"
-        ls -R
-
     - name: Build Dylib
       run: |
-        # 1. Proje ve Target Tespiti
+        # Proje dosyasını otomatik bul
         PROJECT_FILE=$(ls -d *.xcodeproj | head -n 1)
-        if [ -z "$PROJECT_FILE" ]; then echo "HATA: .xcodeproj bulunamadı!"; exit 1; fi
-        
         TARGET_NAME=$(xcodebuild -list -project "$PROJECT_FILE" | awk '/Targets:/ {found=1; next} found && /^[[:space:]]+[^[:space:]]/ {print $1; exit}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-        # 2. Derleme Komutu
-        # Frameworkleri tek tek yazmak yerine Linker'a -framework bayrağıyla temiz bir liste veriyoruz.
         xcodebuild -project "$PROJECT_FILE" \
                    -target "$TARGET_NAME" \
                    -configuration Release \
@@ -47,14 +37,28 @@ jobs:
                    CODE_SIGNING_REQUIRED=NO \
                    AD_HOC_CODE_SIGNING_ALLOWED=YES \
                    CLANG_ENABLE_MODULES=YES \
-                   OTHER_CFLAGS="-fobjc-arc -I./include -O3" \
-                   OTHER_LDFLAGS="-L./lib -lBaseGetter -lc++ -lobjc -framework UIKit -framework Foundation -framework CoreFoundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders -framework QuartzCore -framework CoreGraphics -framework AVFoundation -framework GameController -framework GameKit -framework CloudKit -framework DeviceCheck -framework CoreLocation -framework CoreTelephony -framework Speech -framework Security"
+                   OTHER_CFLAGS="-fobjc-arc -I$(pwd)/include -O3" \
+                   OTHER_LDFLAGS="-L$(pwd)/lib -lBaseGetter -lc++ -lobjc \
+                   -framework UIKit \
+                   -framework Foundation \
+                   -framework CoreFoundation \
+                   -framework Metal \
+                   -framework MetalKit \
+                   -framework MetalPerformanceShaders \
+                   -framework QuartzCore \
+                   -framework CoreGraphics \
+                   -framework AVFoundation \
+                   -framework GameController \
+                   -framework GameKit \
+                   -framework CloudKit \
+                   -framework DeviceCheck \
+                   -framework CoreLocation \
+                   -framework CoreTelephony \
+                   -framework Speech \
+                   -framework Security"
 
-    - name: Upload VIP Dylib
-      uses: upload-artifact@v4
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
       with:
         name: XO-VIP-Dylib
-        path: |
-          build/Release-iphoneos/*.dylib
-          build/Release-iphoneos/*.framework
-        if-no-files-found: error
+        path: build/Release-iphoneos/*.dylib
