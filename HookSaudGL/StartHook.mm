@@ -4,16 +4,22 @@
 #import <mach/vm_prot.h>
 #import <mach/mach.h>
 
-#include "BaseGetter.h"
+#include "BaseGetter.h"   // getBaseAddress buradan geliyor
 
-const uintptr_t AccessoriesVRecoilFactor = 0xBC8;
-const uintptr_t AccessoriesHRecoilFactor = 0xBD0;
-const uintptr_t AccessoriesRecoveryFactor = 0xBCC;
+// Offsets
+const uintptr_t AccessoriesVRecoilFactor    = 0xBC8;
+const uintptr_t AccessoriesHRecoilFactor    = 0xBD0;
+const uintptr_t AccessoriesRecoveryFactor   = 0xBCC;
 
 // Bellek izinlerini ayarlayan yardımcılar
 static bool setMemoryReadWrite(uintptr_t address, size_t size) {
-    vm_address_t alignedAddress = (vm_address_t)(address & ~((uintptr_t)getpagesize() - 1));
-    kern_return_t kr = vm_protect(mach_task_self(), alignedAddress, size, false,
+    vm_address_t pageSize = (vm_address_t)getpagesize();
+    vm_address_t aligned  = (vm_address_t)(address & ~(pageSize - 1));
+
+    kern_return_t kr = vm_protect(mach_task_self(),
+                                  aligned,
+                                  size,
+                                  false,
                                   VM_PROT_READ | VM_PROT_WRITE);
     if (kr != KERN_SUCCESS) {
         NSLog(@"[XO] vm_protect RW failed: %d", kr);
@@ -23,91 +29,97 @@ static bool setMemoryReadWrite(uintptr_t address, size_t size) {
 }
 
 static bool setMemoryReadOnly(uintptr_t address, size_t size) {
-    vm_address_t alignedAddress = (vm_address_t)(address & ~((uintptr_t)getpagesize() - 1));
-    kern_return_t kr = vm_protect(mach_task_self(), alignedAddress, size, false,
+    vm_address_t pageSize = (vm_address_t)getpagesize();
+    vm_address_t aligned  = (vm_address_t)(address & ~(pageSize - 1));
+
+    kern_return_t kr = vm_protect(mach_task_self(),
+                                  aligned,
+                                  size,
+                                  false,
                                   VM_PROT_READ);
     if (kr != KERN_SUCCESS) {
-        NSLog(@"[XO] vm_protect R failed: %d", kr);
+        NSLog(@"[XO] vm_protect RO failed: %d", kr);
         return false;
     }
     return true;
 }
 
-// Orijinal metod pointer'ı için typedef
+// Orijinal metod imzası
 typedef void (*NoRecoilFunc_t)(id, SEL);
 
-// Orijinal implementation'ı tutalım
-static NoRecoilFunc_t orig_NoRecoilFunction = NULL;
+// Globalde orijinal implementation
+static NoRecoilFunc_t g_origNoRecoil = NULL;
 
-// ShadowTrackerExtra base + offsets ile no recoil uygula
+// Asıl patch işi – ShadowTrackerExtra base + offsets
 static void XO_ApplyNoRecoil(void) {
     uintptr_t baseAddress = getBaseAddress("ShadowTrackerExtra");
     if (baseAddress == 0) {
-        NSLog(@"[XO] Base address bulunamadı");
+        NSLog(@"[XO] Base address bulunamadı (ShadowTrackerExtra)");
         return;
     }
 
-    uintptr_t vRecoilAddress = baseAddress + AccessoriesVRecoilFactor;
-    uintptr_t hRecoilAddress = baseAddress + AccessoriesHRecoilFactor;
+    uintptr_t vRecoilAddress  = baseAddress + AccessoriesVRecoilFactor;
+    uintptr_t hRecoilAddress  = baseAddress + AccessoriesHRecoilFactor;
     uintptr_t recoveryAddress = baseAddress + AccessoriesRecoveryFactor;
 
-    // __DATA_CONST olabilir, önce RW yap
+    // __DATA_CONST'ta olma ihtimaline karşı önce R/W yap
     if (!setMemoryReadWrite(vRecoilAddress, sizeof(float))) {
-        NSLog(@"[XO] RW yaparken hata");
+        NSLog(@"[XO] Belleği RW yaparken hata");
         return;
     }
 
-    *(float *)vRecoilAddress = 0.0f;
-    *(float *)hRecoilAddress = 0.0f;
+    *(float *)vRecoilAddress  = 0.0f;
+    *(float *)hRecoilAddress  = 0.0f;
     *(float *)recoveryAddress = 1.0f;
 
-    // Tekrar R-only
+    // Tekrar read-only'a al (iOS 17 SG_READ_ONLY kuralı)
     if (!setMemoryReadOnly(vRecoilAddress, sizeof(float))) {
-        NSLog(@"[XO] RO yaparken hata");
+        NSLog(@"[XO] Belleği tekrar RO yaparken hata");
     }
 
     NSLog(@"[XO] NoRecoil patch uygulandı. base=0x%lx",
           (unsigned long)baseAddress);
 }
 
-// Hook'ladığımız metod
+// Hook'lanmış metodun gövdesi
 static void XO_NoRecoilFunction(id self, SEL _cmd) {
-    // İstersen önce orijinali çağır:
-    if (orig_NoRecoilFunction) {
-        orig_NoRecoilFunction(self, _cmd);
+    // İstersen oyunun orijinal fonksiyonunu da çağır:
+    if (g_origNoRecoil) {
+        g_origNoRecoil(self, _cmd);
     }
 
-    // Sonra patch uygula
+    // Ardından bizim patch
     XO_ApplyNoRecoil();
 }
 
-// Entry point – sınıfı bul, metodu hookla
+// Constructor – class ve method'u bularak hooklar
 __attribute__((constructor))
 static void XO_StartHook(void) {
     @autoreleasepool {
         NSLog(@"[XO] StartHook constructor çalıştı");
 
-        // Oyun sınıfı ismini burada gerçek sınıf adıyla değiştir
+        // Burada gerçek sınıf adını yazman gerekiyor
+        // Örn: @"PlayerController" vs.
         Class gameClass = NSClassFromString(@"YourGameClass");
         if (!gameClass) {
-            NSLog(@"[XO] YourGameClass bulunamadı!");
+            NSLog(@"[XO] YourGameClass bulunamadı! Sınıf adını düzelt.");
             return;
         }
 
+        // Burada da gerçek selector adını yaz:
         SEL sel = NSSelectorFromString(@"NoRecoilFunction");
         Method m = class_getInstanceMethod(gameClass, sel);
         if (!m) {
-            NSLog(@"[XO] NoRecoilFunction metodu bulunamadı!");
+            NSLog(@"[XO] NoRecoilFunction metodu bulunamadı! Selector adını kontrol et.");
             return;
         }
 
         IMP origImp = method_getImplementation(m);
-        orig_NoRecoilFunction = (NoRecoilFunc_t)origImp;
+        g_origNoRecoil = (NoRecoilFunc_t)origImp;
 
-        // Yeni implementation
         IMP newImp = (IMP)XO_NoRecoilFunction;
         method_setImplementation(m, newImp);
 
-        NSLog(@"[XO] NoRecoilFunction hooklandı");
+        NSLog(@"[XO] %@::NoRecoilFunction hooklandı", NSStringFromClass(gameClass));
     }
 }
