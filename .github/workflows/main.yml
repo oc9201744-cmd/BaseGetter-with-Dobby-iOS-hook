@@ -20,24 +20,27 @@ jobs:
       with:
         xcode-version: 'latest-stable'
 
-    - name: Verify Environment
+    - name: Prepare Workspace
       run: |
-        echo "Kütüphane kontrolü yapılıyor..."
-        mkdir -p lib include
-        if [ ! -f "lib/libBaseGetter.a" ]; then
-          echo "HATA: lib/libBaseGetter.a bulunamadı! Lütfen dosyayı repoya ekle."
-        fi
+        # Klasörlerin varlığından emin olalım
+        mkdir -p lib include src
+        echo "Mevcut dosyalar listeleniyor:"
+        ls -R
 
     - name: Build Dylib
       run: |
-        # 1. Proje dosyasını ve Target adını bul
+        # 1. Proje ve Target Tespiti
         PROJECT_FILE=$(ls -d *.xcodeproj | head -n 1)
+        if [ -z "$PROJECT_FILE" ]; then
+          echo "HATA: .xcodeproj dosyası bulunamadı!"
+          exit 1
+        fi
+        
         TARGET_NAME=$(xcodebuild -list -project "$PROJECT_FILE" | awk '/Targets:/ {found=1; next} found && /^[[:space:]]+[^[:space:]]/ {print $1; exit}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         
-        echo "Proje: $PROJECT_FILE"
-        echo "Target: $TARGET_NAME"
+        echo "Build Başlıyor: $TARGET_NAME"
 
-        # 2. Derleme (Dobby Çıkarıldı, Tüm Frameworkler Eklendi)
+        # 2. xcodebuild Komutu (Hata payını sıfıra indiren flaglar eklendi)
         xcodebuild -project "$PROJECT_FILE" \
                    -target "$TARGET_NAME" \
                    -configuration Release \
@@ -49,36 +52,33 @@ jobs:
                    CODE_SIGNING_REQUIRED=NO \
                    AD_HOC_CODE_SIGNING_ALLOWED=YES \
                    COMPILER_INDEX_STORE_ENABLE=NO \
-                   GENERATE_INFOPLIST_FILE=YES \
-                   OTHER_CFLAGS="-fobjc-arc -I./include -Wno-deprecated-declarations" \
+                   OTHER_CFLAGS="-fobjc-arc -I./include -DNDEBUG" \
                    OTHER_LDFLAGS="-L./lib -lBaseGetter -lc++ -lobjc \
                    -framework UIKit \
                    -framework Foundation \
                    -framework CoreFoundation \
                    -framework Metal \
                    -framework MetalKit \
-                   -framework MetalPerformanceShaders \
                    -framework QuartzCore \
                    -framework CoreGraphics \
                    -framework AVFoundation \
-                   -framework GameController \
-                   -framework GameKit \
-                   -framework CloudKit \
-                   -framework DeviceCheck \
-                   -framework CoreLocation \
+                   -framework Security \
                    -framework CoreTelephony \
-                   -framework Speech \
-                   -framework Security"
+                   -framework CoreLocation"
 
-    - name: Check Output
+    - name: Check Build Output
       run: |
-        echo "Derleme başarılı, dosyalar listeleniyor:"
-        ls -R build/Release-iphoneos/
+        if [ -d "build/Release-iphoneos" ]; then
+          ls -R build/Release-iphoneos/
+        else
+          echo "HATA: Build klasörü oluşmadı!"
+          exit 1
+        fi
 
-    - name: Upload VIP Dylib
-      uses: upload-artifact@v4
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
       with:
-        name: XO-VIP-Dylib-Build
+        name: XO-VIP-Dylib
         path: |
           build/Release-iphoneos/*.dylib
           build/Release-iphoneos/*.framework
