@@ -1,121 +1,79 @@
-// --- İstenen Kütüphane ve Framework'ler ---
-#import <UIKit/UIKit.h>                  // iOS UI katmanı
-#import <Foundation/Foundation.h>        // Temel Obj-C altyapısı
+// --- Gerekli Tüm Framework ve Kütüphaneler ---
+#import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
 #import <CoreFoundation/CoreFoundation.h>
-#import <Metal/Metal.h>                  // GPU rendering
+#import <Metal/Metal.h>
 #import <MetalKit/MetalKit.h>
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
-#import <QuartzCore/QuartzCore.h>        // Grafik katmanı
+#import <QuartzCore/QuartzCore.h>
 #import <CoreGraphics/CoreGraphics.h>
-#import <AVFoundation/AVFoundation.h>    // Ses/video
-#import <GameController/GameController.h> // Oyun kontrolcüsü
+#import <AVFoundation/AVFoundation.h>
+#import <GameController/GameController.h>
 #import <GameKit/GameKit.h>
-#import <CloudKit/CloudKit.h>            // Apple sunucu servisleri
+#import <CloudKit/CloudKit.h>
 #import <DeviceCheck/DeviceCheck.h>
-#import <CoreLocation/CoreLocation.h>    // Konum
-#import <CoreTelephony/CTTelephonyNetworkInfo.h> // GSM bilgisi
-#import <Speech/Speech.h>                // Ses işleme
-#import <OpenAL/al.h>
-#import <Security/Security.h>            // Keychain / kriptolib
+#import <CoreLocation/CoreLocation.h>
+#import <CoreTelephony/CTTelephonyNetworkInfo.h>
+#import <Speech/Speech.h>
+#import <Security/Security.h>
 
-// --- Standart C++ ve Hook Kütüphaneleri ---
+// --- Altyapı ---
 #import <mach-o/dyld.h>
 #import <mach/mach.h>
-#import <stdint.h>
-#import "dobby.h"
 #import "BaseGetter.h"
 
 // ==========================================
-// PB 4.2 OFFSETS (VNG / GL vb.)
+// PB 4.2 OFFSETS
 // ==========================================
 const uintptr_t CurrentWeapon = 0x2A54;
-const uintptr_t ShootWeaponEntityComp = 0x12C0; // Dosyandaki 0x12C0
+const uintptr_t ShootWeaponEntityComp = 0x12C0;
 const uintptr_t AccessoriesVRecoilFactor = 0xBC8;
 const uintptr_t AccessoriesHRecoilFactor = 0xBD0;
 const uintptr_t AccessoriesRecoveryFactor = 0xBCC;
-const uintptr_t GameDeviationFactor = 0xC2C;    // Mermi dağılması
-const uintptr_t RecoilKickADS = 0xCF0;          // Dürbün tepmesi
+const uintptr_t GameDeviationFactor = 0xC2C;
+const uintptr_t RecoilKickADS = 0xCF0;
 
-// ==========================================
-// NO RECOIL HOOK LOGIC
-// ==========================================
-typedef void (*orig_Update_t)(void *instance, float dt);
-orig_Update_t orig_Update = nullptr;
-
-void hook_MainUpdate(void *instance, float dt) {
-    if (instance) {
-        uintptr_t base = (uintptr_t)instance;
-        
-        // 1. Silah objesine geçiş
-        uintptr_t weapon = *(uintptr_t *)(base + CurrentWeapon);
-        if (weapon > 0x100000000) {
-            
-            // 2. Ateş mekanizmasına (Entity) geçiş
-            uintptr_t entity = *(uintptr_t *)(weapon + ShootWeaponEntityComp);
-            if (entity > 0x100000000) {
-                
-                // 3. Pointerleri al
-                float *vRecoil = (float *)(entity + AccessoriesVRecoilFactor);
-                float *hRecoil = (float *)(entity + AccessoriesHRecoilFactor);
-                float *recovery = (float *)(entity + AccessoriesRecoveryFactor);
-                float *deviation = (float *)(entity + GameDeviationFactor);
-                float *kickADS = (float *)(entity + RecoilKickADS);
-
-                // 4. Değerleri sıfırla (Gereksiz yazmayı önlemek için kontrol et)
-                if (vRecoil && *vRecoil != 0.0f) *vRecoil = 0.0f;       // Dikey
-                if (hRecoil && *hRecoil != 0.0f) *hRecoil = 0.0f;       // Yatay
-                if (recovery && *recovery != 0.0f) *recovery = 0.0f;    // Toparlanma
-                if (deviation && *deviation != 0.0f) *deviation = 0.0f; // Dağılma
-                if (kickADS && *kickADS != 0.0f) *kickADS = 0.0f;       // ADS Tepme
-            }
-        }
-    }
-    orig_Update(instance, dt);
+// Hafızaya Güvenli Yazma (Non-JB için vm_protect kullanımı)
+void write_float(uintptr_t address, float value) {
+    if (address < 0x100000000) return;
+    vm_protect(mach_task_self(), (vm_address_t)address, sizeof(float), false, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+    *(float *)address = value;
+    vm_protect(mach_task_self(), (vm_address_t)address, sizeof(float), false, VM_PROT_READ | VM_PROT_EXECUTE);
 }
 
 // ==========================================
-// ARAYÜZ (UIKIT KULLANIMI)
+// NO RECOIL LOOP
 // ==========================================
-static void showHackActiveUI() {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UILabel *statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 50, 200, 35)];
-        statusLabel.text = @"🔥 SaudGL No Recoil Aktif";
-        statusLabel.textColor = [UIColor systemGreenColor];
-        statusLabel.font = [UIFont boldSystemFontOfSize:14.0];
-        statusLabel.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.7];
-        statusLabel.textAlignment = NSTextAlignmentCenter;
-        statusLabel.layer.cornerRadius = 8;
-        statusLabel.clipsToBounds = YES;
-        statusLabel.layer.zPosition = 9999; // En üstte kalması için (QuartzCore)
-        
-        UIWindow *window = [[UIApplication sharedApplication] keyWindow];
-        [window addSubview:statusLabel];
+void start_no_recoil() {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        while (true) {
+            // Not: STExtraBaseCharacter instance'ını kendi methodunla çekmelisin
+            // Örnek olarak BaseCharacter üzerinden silah enetity'sine ulaşıyoruz
+            uintptr_t baseCharacter = 0; // Burada yerel oyuncu adresi olmalı
+            
+            if (baseCharacter > 0x100000000) {
+                uintptr_t weapon = *(uintptr_t *)(baseCharacter + CurrentWeapon);
+                if (weapon > 0x100000000) {
+                    uintptr_t entity = *(uintptr_t *)(weapon + ShootWeaponEntityComp);
+                    if (entity > 0x100000000) {
+                        // Sekmeme ve Yayılma değerlerini sıfırla
+                        write_float(entity + AccessoriesVRecoilFactor, 0.0f);
+                        write_float(entity + AccessoriesHRecoilFactor, 0.0f);
+                        write_float(entity + AccessoriesRecoveryFactor, 0.0f);
+                        write_float(entity + GameDeviationFactor, 0.0f);
+                        write_float(entity + RecoilKickADS, 0.0f);
+                    }
+                }
+            }
+            [NSThread sleepForTimeInterval:0.5]; // CPU yormadan 500ms'de bir tazele
+        }
     });
 }
 
-// ==========================================
-// BAŞLATICI (INITIALIZER)
-// ==========================================
 __attribute__((constructor))
-static void saud_gl_init() {
-    // Kütüphanelerin ve oyunun oturması için gecikme (CoreFoundation)
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-        
-        NSLog(@"[SaudGL] Sistem başlatılıyor...");
-
-        // ÖNEMLİ: STExtraBaseCharacter::Update adresi. 
-        // Dump dosyanızdan asıl offseti buraya girmelisiniz.
-        uint64_t updateOffset = 0x104aa76a8; 
-        void *targetFunc = (void *)BGGetMainAddress(updateOffset);
-        
-        if (targetFunc) {
-            DobbyHook(targetFunc, (void *)hook_MainUpdate, (void **)&orig_Update);
-            NSLog(@"[SaudGL] No Recoil (Sekmeme) başarıyla bağlandı.");
-            
-            // Ekrana UIKit ile yazıyı bas
-            showHackActiveUI();
-        } else {
-            NSLog(@"[SaudGL] HATA: Update adresi bulunamadı!");
-        }
+static void initialize() {
+    // 15 saniye bekle (Oyunun açılması ve kütüphanelerin yüklenmesi için)
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        start_no_recoil();
     });
 }
