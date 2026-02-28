@@ -1,4 +1,4 @@
-name: "XO-VIP-FINAL-BUILD"
+name: "XO-VIP-IOS17-FINAL"
 
 on:
   push:
@@ -20,27 +20,21 @@ jobs:
       with:
         xcode-version: 'latest-stable'
 
-    - name: Prepare Workspace
+    - name: Prepare Folders
       run: |
-        # Klasörlerin varlığından emin olalım
-        mkdir -p lib include src
-        echo "Mevcut dosyalar listeleniyor:"
-        ls -R
+        mkdir -p lib include
+        echo "Kütüphane Kontrolü:"
+        ls -R lib/
 
     - name: Build Dylib
       run: |
-        # 1. Proje ve Target Tespiti
+        # 1. Proje Dosyasını Bul
         PROJECT_FILE=$(ls -d *.xcodeproj | head -n 1)
-        if [ -z "$PROJECT_FILE" ]; then
-          echo "HATA: .xcodeproj dosyası bulunamadı!"
-          exit 1
-        fi
-        
         TARGET_NAME=$(xcodebuild -list -project "$PROJECT_FILE" | awk '/Targets:/ {found=1; next} found && /^[[:space:]]+[^[:space:]]/ {print $1; exit}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         
-        echo "Build Başlıyor: $TARGET_NAME"
+        echo "Building Target: $TARGET_NAME"
 
-        # 2. xcodebuild Komutu (Hata payını sıfıra indiren flaglar eklendi)
+        # 2. xcodebuild (Tüm kütüphaneler ve iOS 17 uyumluluğu için flaglar)
         xcodebuild -project "$PROJECT_FILE" \
                    -target "$TARGET_NAME" \
                    -configuration Release \
@@ -51,34 +45,35 @@ jobs:
                    CODE_SIGNING_ALLOWED=NO \
                    CODE_SIGNING_REQUIRED=NO \
                    AD_HOC_CODE_SIGNING_ALLOWED=YES \
-                   COMPILER_INDEX_STORE_ENABLE=NO \
-                   OTHER_CFLAGS="-fobjc-arc -I./include -DNDEBUG" \
+                   OTHER_CFLAGS="-fobjc-arc -I./include -DNDEBUG -O3" \
                    OTHER_LDFLAGS="-L./lib -lBaseGetter -lc++ -lobjc \
                    -framework UIKit \
                    -framework Foundation \
                    -framework CoreFoundation \
                    -framework Metal \
                    -framework MetalKit \
+                   -framework MetalPerformanceShaders \
                    -framework QuartzCore \
                    -framework CoreGraphics \
                    -framework AVFoundation \
-                   -framework Security \
+                   -framework GameController \
+                   -framework GameKit \
+                   -framework CloudKit \
+                   -framework DeviceCheck \
+                   -framework CoreLocation \
                    -framework CoreTelephony \
-                   -framework CoreLocation"
+                   -framework Speech \
+                   -framework Security"
 
-    - name: Check Build Output
+    - name: Check Output
       run: |
-        if [ -d "build/Release-iphoneos" ]; then
-          ls -R build/Release-iphoneos/
-        else
-          echo "HATA: Build klasörü oluşmadı!"
-          exit 1
-        fi
+        echo "Build Dosyaları:"
+        ls -R build/Release-iphoneos/
 
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
+    - name: Upload XO-VIP Dylib
+      uses: upload-artifact@v4
       with:
-        name: XO-VIP-Dylib
+        name: XO-VIP-Build-iOS17
         path: |
           build/Release-iphoneos/*.dylib
           build/Release-iphoneos/*.framework
