@@ -1,4 +1,4 @@
-name: "XO-VIP-FINAL-FIX"
+name: "XO-VIP-ULTIMATE-BUILD"
 
 on:
   push:
@@ -12,8 +12,6 @@ jobs:
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: Set up Xcode
       uses: maxim-lobanov/setup-xcode@v1
@@ -22,7 +20,6 @@ jobs:
 
     - name: Build Dylib
       run: |
-        # Proje dosyasını otomatik bul
         PROJECT_FILE=$(ls -d *.xcodeproj | head -n 1)
         TARGET_NAME=$(xcodebuild -list -project "$PROJECT_FILE" | awk '/Targets:/ {found=1; next} found && /^[[:space:]]+[^[:space:]]/ {print $1; exit}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
@@ -31,34 +28,20 @@ jobs:
                    -configuration Release \
                    -sdk iphoneos \
                    ARCHS="arm64" \
-                   ONLY_ACTIVE_ARCH=NO \
                    clean build \
                    CODE_SIGNING_ALLOWED=NO \
-                   CODE_SIGNING_REQUIRED=NO \
-                   AD_HOC_CODE_SIGNING_ALLOWED=YES \
                    CLANG_ENABLE_MODULES=YES \
                    OTHER_CFLAGS="-fobjc-arc -I$(pwd)/include -O3" \
-                   OTHER_LDFLAGS="-L$(pwd)/lib -lBaseGetter -lc++ -lobjc \
-                   -framework UIKit \
-                   -framework Foundation \
-                   -framework CoreFoundation \
-                   -framework Metal \
-                   -framework MetalKit \
-                   -framework MetalPerformanceShaders \
-                   -framework QuartzCore \
-                   -framework CoreGraphics \
-                   -framework AVFoundation \
-                   -framework GameController \
-                   -framework GameKit \
-                   -framework CloudKit \
-                   -framework DeviceCheck \
-                   -framework CoreLocation \
-                   -framework CoreTelephony \
-                   -framework Speech \
-                   -framework Security"
+                   OTHER_LDFLAGS="-L$(pwd)/lib -lBaseGetter -ldobby -lc++ -lobjc \
+                   -framework UIKit -framework Foundation -framework CoreFoundation \
+                   -framework Metal -framework MetalKit -framework MetalPerformanceShaders \
+                   -framework QuartzCore -framework CoreGraphics -framework AVFoundation \
+                   -framework GameController -framework GameKit -framework CloudKit \
+                   -framework DeviceCheck -framework CoreLocation -framework CoreTelephony \
+                   -framework Speech -framework Security"
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v4
+      uses: upload-artifact@v4
       with:
         name: XO-VIP-Dylib
         path: build/Release-iphoneos/*.dylib
