@@ -1,4 +1,4 @@
-name: "XO-VIP-ULTIMATE-BUILD"
+name: "XO-VIP-FINAL-FIXED"
 
 on:
   push:
@@ -20,28 +20,31 @@ jobs:
 
     - name: Build Dylib
       run: |
+        # 1. Proje Dosyasını Bul
         PROJECT_FILE=$(ls -d *.xcodeproj | head -n 1)
+        if [ -z "$PROJECT_FILE" ]; then echo "HATA: .xcodeproj dosyası bulunamadı!"; exit 1; fi
+        
         TARGET_NAME=$(xcodebuild -list -project "$PROJECT_FILE" | awk '/Targets:/ {found=1; next} found && /^[[:space:]]+[^[:space:]]/ {print $1; exit}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
+        # 2. Derleme Komutu
+        # Framework'lerin çoğunu CLANG_ENABLE_MODULES=YES sayesinde otomatik bağlayacağız.
+        # Sadece özel kütüphaneleri (Dobby, BaseGetter) manuel linkliyoruz.
         xcodebuild -project "$PROJECT_FILE" \
                    -target "$TARGET_NAME" \
                    -configuration Release \
                    -sdk iphoneos \
                    ARCHS="arm64" \
+                   ONLY_ACTIVE_ARCH=NO \
                    clean build \
                    CODE_SIGNING_ALLOWED=NO \
+                   CODE_SIGNING_REQUIRED=NO \
+                   AD_HOC_CODE_SIGNING_ALLOWED=YES \
                    CLANG_ENABLE_MODULES=YES \
                    OTHER_CFLAGS="-fobjc-arc -I$(pwd)/include -O3" \
-                   OTHER_LDFLAGS="-L$(pwd)/lib -lBaseGetter -ldobby -lc++ -lobjc \
-                   -framework UIKit -framework Foundation -framework CoreFoundation \
-                   -framework Metal -framework MetalKit -framework MetalPerformanceShaders \
-                   -framework QuartzCore -framework CoreGraphics -framework AVFoundation \
-                   -framework GameController -framework GameKit -framework CloudKit \
-                   -framework DeviceCheck -framework CoreLocation -framework CoreTelephony \
-                   -framework Speech -framework Security"
+                   OTHER_LDFLAGS="-L$(pwd)/lib -lBaseGetter -ldobby -lc++ -lobjc -framework UIKit -framework Foundation -framework CoreFoundation -framework Metal -framework QuartzCore -framework Security"
 
     - name: Upload Artifact
-      uses: upload-artifact@v4
+      uses: actions/upload-artifact@v4
       with:
         name: XO-VIP-Dylib
         path: build/Release-iphoneos/*.dylib
