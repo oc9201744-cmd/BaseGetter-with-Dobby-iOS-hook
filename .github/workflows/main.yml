@@ -10,47 +10,35 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    # Depoyu Çek
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    # Xcode Ortamını Ayarla
     - name: Set up Xcode
       uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: 'latest-stable'
 
-    # Projeyi Derle
     - name: Build Dylib
       run: |
-        # Proje Dosyasını Bul
-        PROJECT_FILE=$(find . -type d -name "*.xcodeproj" | head -n 1)
-        if [ -z "$PROJECT_FILE" ]; then
-          echo "HATA: .xcodeproj dosyası bulunamadı! Doğru dizinde misiniz?"
-          exit 1
-        fi
+        # 1. Proje Dosyasını Bul
+        PROJECT_FILE=$(ls -d *.xcodeproj | head -n 1)
+        if [ -z "$PROJECT_FILE" ]; then echo "HATA: .xcodeproj dosyası bulunamadı!"; exit 1; fi
         
-        # Hedef İsmini Bul
-        TARGET_NAME=$(xcodebuild -list -project "$PROJECT_FILE" | grep -A 2 "Targets:" | tail -n 1 | xargs)
-        if [ -z "$TARGET_NAME" ]; then
-          echo "HATA: TARGET bulunamadı!"
-          exit 1
-        fi
-        echo "Projede Bulunan Hedef: $TARGET_NAME"
-        
-        # Derleme Komutlarını Çalıştır
+        TARGET_NAME=$(xcodebuild -list -project "$PROJECT_FILE" | awk '/Targets:/ {found=1; next} found && /^[[:space:]]+[^[:space:]]/ {print $1; exit}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+        # 2. Derleme Komutu
+        # Framework'lerin çoğunu CLANG_ENABLE_MODULES=YES sayesinde otomatik bağlayacağız.
+        # Sadece özel kütüphaneleri (Dobby, BaseGetter) manuel linkliyoruz.
         xcodebuild -project "$PROJECT_FILE" \
                    -target "$TARGET_NAME" \
                    -configuration Release \
                    -sdk iphoneos \
                    ARCHS="arm64" \
+                   ONLY_ACTIVE_ARCH=NO \
                    clean build \
                    CODE_SIGNING_ALLOWED=NO \
                    CODE_SIGNING_REQUIRED=NO \
                    AD_HOC_CODE_SIGNING_ALLOWED=YES \
                    CLANG_ENABLE_MODULES=YES \
                    OTHER_CFLAGS="-fobjc-arc -I$(pwd)/include -O3" \
-                   OTHER_LDFLAGS="-L$(pwd)/lib -lBaseGetter -ldobby -lc++ -lobjc -framework UIKit -framework Foundation -framework CoreFoundation -framework Metal -framework QuartzCore -framework Security"
-
-    # Çıkışı Doğrula
-    - name: Validate Build Output
+                  
